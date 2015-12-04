@@ -46,7 +46,7 @@ def mnist(ntrain=60000,ntest=10000,onehot=True):
 
 	return trX,teX,trY,teY
 
-def geotutor(train_p=0.7):
+def geotutor():
     f=open(os.path.dirname(__file__)+'\\..\\data\\geo tutor\\all_data.txt')
     firstline=True
     colnames=list()
@@ -57,10 +57,10 @@ def geotutor(train_p=0.7):
         if(firstline):
             y_index=index=0
             for col in line.split('	'):
+                colnames.append(col)   
                 if(col=='Outcome'):
                     y_index=index
-                else:
-                    colnames.append(col)   
+                    del_index.append(index)               
                 if(col in ['Row', 'Transaction Id', 'Session Id', 'Time', 'Problem Start Time','Duration (sec)', 'Sample Name']):
                     del_index.append(index)
                 if(col in ['KC (Geometry)', 'KC Category (Geometry)', 'KC (Area)', 'KC Category (Area)','KC (Textbook)', 'KC Category (Textbook)','KC (Textbook New)', 'KC Category (Textbook New)', 'KC (Decompose)', 'KC Category (Decompose)',
@@ -86,7 +86,6 @@ def geotutor(train_p=0.7):
         else:
             row=line.split('	')
             y.append(row[y_index])
-            del row[y_index] #the output
             count=0
             for i in del_index:
                 del row[i-count]
@@ -97,7 +96,7 @@ def geotutor(train_p=0.7):
     #y=np.array(y)
     return colnames, data, y
 
-def process(cols, data, targets):
+def simple_process(cols, data, targets): #transform each feature as true/false
     features=list()
     for i in range(len(cols)):
         s=set(row[i] for row in data)    
@@ -123,7 +122,117 @@ def process(cols, data, targets):
     newy=np.array(newy)
     newy = one_hot(newy, 2)
     return features,newdata,newy
+
+
+
+class question:
+    correct_attempts=0.
+    incorrect_attempts=0.
+    upper_correct=0.
+    lower_correct=0.
+    def __init__(self,qid):
+        self.qid=qid
+    def difficulty(self):
+        return self.incorrect_attempts/(self.incorrect_attempts+self.correct_attempts)
+    def discrimination(self):
+        return (self.upper_correct-self.lower_correct)/(self.upper_correct+self.lower_correct)
+
+class student:
+    kc_prac_num=dict()
+    def __init__(self,sid,all_kcs):
+        self.sid=sid
+        for kc in all_kcs:
+            self.kc_prac_num[kc]=0
+    def inc_exec(self,kc_name):
+        self.kc_prac_num[kc_name]+=1
+    def get_prac_num(self,kc_name):
+        return self.kc_prac_num[kc_name]
         
+def items_features(cols,data,targets):
+    q_dict=dict()
+    prob_index=0
+    index=0
+    for col in cols:
+        if(col=='Problem Name'):
+            prob_index=index
+        index+=1
+    rownum=0
+    for row in data:
+        if(not q_dict.has_key(row[prob_index])):
+            q=question(row[prob_index]) 
+            q_dict[row[prob_index]]=q
+        q=q_dict[row[prob_index]]
+        if(targets[rownum]=='CORRECT'):
+            q.correct_attempts+=1
+        else:
+            q.incorrect_attempts+=1
+        rownum+=1
+    '''for q in q_dict.values():
+        print q.qid, q.correct_attempts, q.incorrect_attempts'''
+    return q_dict
+
+def process(cols,data,targets):
+    features=list()
+    newlogs=list()
+    s_dict=dict()
+    index=0
+    index_kc=index_stu=0
+    all_kcs=list()
+    for col in cols:
+        if(col=='KC (Original)'):
+            index_kc=index
+        if(col=='Anon Student Id'):
+            index_stu=index
+        index+=1
+
+    features=list()
+    for i in range(len(cols)):
+        s=set(row[i] for row in data)    
+        while(len(s)>0):
+            feature=cols[i]+':'+s.pop()
+            features.append(feature)
+    for kc in set(row[index_kc] for row in data):
+        features.append("prac_num_"+kc)
+        all_kcs.append(kc)
+    
+
+    for record in data:
+        newrecord=list()
+        newrecord=[0]*len(features)
+        for i in range(len(record)):
+            index=features.index(cols[i]+':'+record[i])
+            newrecord[index]=1
+
+        stuid=record[index_stu] #student id
+        kcid=record[index_kc]
+        if(not s_dict.has_key(stuid)):
+            s_dict[stuid]=student(stuid,all_kcs)
+        stu=s_dict[stuid]
+        stu.inc_exec(kcid)
+        for kc_prac_num in stu.kc_prac_num.values():
+            newrecord.append(kc_prac_num)
+        newlogs.append(newrecord)
+    newlogs=normalize(newlogs)
+
+    newy=list()
+    y_cat=list(set(targets))
+    for y in targets:
+        newy.append(y_cat.index(y))        
+    newy=np.array(newy)
+    newy = one_hot(newy, 2)
+    return features,newlogs,newy
+
+def normalize(data):
+    max_index=np.argmax(data,axis=0)
+    max_values=list(data[max_index[col]][col] for col in range(len(max_index)))
+    for i in range(len(data)):
+        for j in range(len(max_index)):
+            if(data[max_index[j]][j] >0):
+                data[i][j]/=(max_values[j]*1.)
+    return data
+        
+    
 
 col, trX, trY=geotutor()
+items_features(col, trX, trY)
 col, trX, trY=process(col, trX, trY)

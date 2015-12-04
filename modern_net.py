@@ -4,6 +4,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 import numpy as np
 import load as load
 from sklearn import cross_validation
+import matplotlib.pyplot as pl
 
 srng = RandomStreams()
 
@@ -50,12 +51,15 @@ def model(X, w_h, w_h2, w_o, p_drop_input, p_drop_hidden):
     py_x = softmax(T.dot(h2, w_o))
     return h, h2, py_x
 
-def train_with(num):
+def train_with(num, test=True):
     for i in range(1000):
         for start, end in zip(range(0, num, 128), range(128, num, 128)):
             cost = train(trX[start:end], trY[start:end])
         #print i, np.mean(np.argmax(teY, axis=1) == predict(teX))
-    acc=np.mean(np.argmax(teY, axis=1) == predict(teX))
+    if(test):
+        acc=np.mean(np.argmax(teY, axis=1) == predict(teX))
+    else:
+        acc=np.mean(np.argmax(trY[:num], axis=1) == predict(trX[:num]))
     print num, acc
     return acc
 
@@ -90,7 +94,28 @@ while (num<len(trX)):
     acc=train_with(num)
     accuracy.append(acc)
     num+=200
+pl.plot(train_num, accuracy)
 
+
+num=200
+train_num=list()
+accuracy=list()
+w_h = init_weights((364, 59))
+w_h2 = init_weights((59, 59))
+w_o = init_weights((59, 2))
+while (num<len(trX)):
+    train_num.append(num)
+    acc=train_with(num,test=False)
+    accuracy.append(acc)
+    num+=200
+pl.plot(train_num, accuracy)
+
+pl.xlabel("number of training examples")
+pl.ylabel("accuracy")
+pl.title("Accuracy changes with the number of training examples")
+pl.grid(True)
+pl.savefig("modern_net.png")
+pl.show()
 
 
 
